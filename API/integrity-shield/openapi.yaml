@@ -1,0 +1,474 @@
+openapi: 3.0.3
+
+info:
+  title: Integrity Shield API
+  description: |
+    # Integrity Shield — Audit-Proof Cloud Storage Using Blockchain
+
+    Cryptographic audit platform using Merkle Trees and Blockchain anchoring
+    for timestamp-verified integrity proofs of file uploads with tamper-proof guarantees.
+
+    ## Architecture
+
+    | Layer | Technology |
+    |---|---|
+    | Framework | Spring Boot 4.0.1 (Kotlin, Java 17) |
+    | Cloud Storage | AWS S3 with Object LOCK (WORM) |
+    | Blockchain | Web3j 4.12.0 (Ethereum-compatible networks) |
+    | Cryptography | SHA-256, Merkle Tree proofs |
+    | Database | H2 JPA |
+
+    ## Field Name Glossary
+
+    | Concept | Field name |
+    |---|---|
+    | Current Merkle root hash (live tree state) | `currentRoot` |
+    | Root hash stored in an anchor record | `rootHash` |
+    | Input root hash for verification | `knownRoot` |
+    | SHA-256 content hash of a file | `contentHash` |
+    | Blockchain transaction hash | `transactionHash` |
+
+  version: 1.1.0
+  contact:
+    name: Integrity Shield Project Team
+    url: https://github.com/IntegrityShield-MSC
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0.html
+
+servers:
+  - url: http://localhost:8080
+    description: Local Development Server
+  - url: https://api.integrity-shield.example.com
+    description: Production Server (example)
+
+tags:
+  - name: File Management
+    description: File upload and managed storage operations
+  - name: Audit & Verification
+    description: Merkle Tree integrity verification and proof retrieval
+  - name: Blockchain Anchoring
+    description: Blockchain-based Merkle root anchoring and verification
+
+paths:
+
+  # ── File Management ─────────────────────────────────────────────────────────
+
+  /api/v1/files/upload:
+    post:
+      tags: [File Management]
+      summary: Upload a file and append it to the audit log
+      description: |
+        Uploads a file to AWS S3 WORM storage, computes its SHA-256 content hash,
+        and appends it as a new leaf in the off-chain Merkle Tree.
+
+        **Leaf hash**: `SHA-256(fileIdentifier + storageVersionId + contentHash + uploadTimestamp)`
+
+        **Idempotency**: If identical content already exists (matched via `contentHash`),
+        no new leaf is created. The response carries `status: "idempotent"` with HTTP 200.
+
+        > ⚠️ Store `uploadTimestamp` and `storageVersionId` **exactly** as returned — 
+        > they are used verbatim in the leaf hash and must be passed to `verify-inclusion`.
+      operationId: uploadFile
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: The file to upload (max 10 MB)
+      responses:
+        '201':
+          description: New file uploaded and appended to the audit log
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadResponse'
+              example:
+                id: 42
+                fileIdentifier: "document.pdf"
+                storageVersionId: "v1-abc123def456"
+                contentHash: "3a5e9a7c2d1b8f6e4c9a2d7b5e8f1a3c6d4e2f1a8b7c9d0e3f5a2b4c6d8e1f0a"
+                leafIndex: 42
+                uploadTimestamp: "2026-03-05T14:23:45.123Z"
+                currentRoot: "7f4a3c9b1e2d8a5c6f7e8d9c0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b"
+                leafCount: 43
+                message: "File uploaded and appended to audit log"
+                status: null
+        '200':
+          description: Identical content already exists — no change (idempotent)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # ── Audit & Verification ────────────────────────────────────────────────────
+
+  /api/v1/audit/current-root:
+    get:
+      tags: [Audit & Verification]
+      summary: Get the current Merkle root and leaf count
+      operationId: getCurrentRoot
+      responses:
+        '200':
+          description: Current Merkle root retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MerkleRootResponse'
+
+  /api/v1/audit/verify-inclusion:
+    post:
+      tags: [Audit & Verification]
+      summary: Verify that a file version is included in the audit log
+      operationId: verifyFileInclusion
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerificationRequest'
+      responses:
+        '200':
+          description: Verification completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerificationResponse'
+
+  /api/v1/audit/proof/{fileVersionId}:
+    get:
+      tags: [Audit & Verification]
+      summary: Get the Merkle proof for a file version
+      operationId: getMerkleProof
+      parameters:
+        - $ref: '#/components/parameters/FileVersionIdPath'
+      responses:
+        '200':
+          description: Merkle proof retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MerkleProofResponse'
+
+  /api/v1/audit/all-versions:
+    get:
+      tags: [Audit & Verification]
+      summary: List all file versions in the audit log
+      operationId: getAllFileVersions
+      responses:
+        '200':
+          description: All file versions retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AllVersionsResponse'
+
+  /api/v1/audit/versions/{fileIdentifier}:
+    get:
+      tags: [Audit & Verification]
+      summary: List all versions of a specific file
+      operationId: getFileVersions
+      parameters:
+        - $ref: '#/components/parameters/FileIdentifierPath'
+      responses:
+        '200':
+          description: File versions retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileVersionsResponse'
+
+  # ── Blockchain Anchoring ────────────────────────────────────────────────────
+
+  /api/v1/audit/anchor-root:
+    post:
+      tags: [Blockchain Anchoring]
+      summary: Anchor the current Merkle root on the blockchain
+      operationId: anchorCurrentRoot
+      responses:
+        '200':
+          description: Root successfully anchored
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnchoringResult'
+
+  /api/v1/audit/latest-anchor:
+    get:
+      tags: [Blockchain Anchoring]
+      summary: Get the most recent blockchain anchor
+      operationId: getLatestAnchor
+      responses:
+        '200':
+          description: Latest anchor retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnchoringResult'
+
+  /api/v1/audit/anchors/verify:
+    get:
+      tags: [Blockchain Anchoring]
+      summary: Verify a blockchain anchor on-chain
+      operationId: verifyAnchor
+      parameters:
+        - $ref: '#/components/parameters/RootHashQuery'
+        - $ref: '#/components/parameters/TransactionHashQuery'
+      responses:
+        '200':
+          description: Anchor verification result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnchorVerificationResponse'
+
+  /api/v1/audit/gas-estimate:
+    get:
+      tags: [Blockchain Anchoring]
+      summary: Estimate blockchain anchoring gas costs
+      description: |
+        Fetches the current gas price from the testnet (Sepolia) and estimates what
+        the same smart contract call would cost on Ethereum mainnet.
+
+        Uses the `gasUsed` from the last anchoring transaction receipt, or a fallback
+        gas limit if no transaction has been executed yet.
+
+        Optionally includes a USD conversion if an exchange rate API is configured.
+      operationId: estimateGasCost
+      responses:
+        '200':
+          description: Gas cost estimate retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GasEstimateResponse'
+
+components:
+
+  parameters:
+    FileVersionIdPath:
+      name: fileVersionId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    FileIdentifierPath:
+      name: fileIdentifier
+      in: path
+      required: true
+      schema:
+        type: string
+    RootHashQuery:
+      name: rootHash
+      in: query
+      required: true
+      schema:
+        $ref: '#/components/schemas/Sha256Hex'
+    TransactionHashQuery:
+      name: transactionHash
+      in: query
+      required: true
+      schema:
+        $ref: '#/components/schemas/TransactionHashHex'
+
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    InternalServerError:
+      description: Server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  schemas:
+    Sha256Hex:
+      type: string
+      pattern: '^[a-fA-F0-9]{64}$'
+    TransactionHashHex:
+      type: string
+      pattern: '^0x[a-fA-F0-9]{64}$'
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error: {type: string}
+        message: {type: string}
+
+    MerkleRootResponse:
+      type: object
+      required: [currentRoot, leafCount]
+      properties:
+        currentRoot: {$ref: '#/components/schemas/Sha256Hex'}
+        leafCount: {type: integer, format: int64}
+
+    UploadResponse:
+      type: object
+      required:
+        - id
+        - fileIdentifier
+        - storageVersionId
+        - contentHash
+        - leafIndex
+        - uploadTimestamp
+        - currentRoot
+        - leafCount
+        - message
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: Database record ID (needed for get-proof endpoint)
+          example: 42
+        fileIdentifier: {type: string}
+        storageVersionId:
+          type: string
+          description: S3/Storage version ID (needed for verify-inclusion)
+          example: "v1-abc123def"
+        contentHash: {$ref: '#/components/schemas/Sha256Hex'}
+        leafIndex: {type: integer, format: int64}
+        uploadTimestamp: {type: string, format: date-time}
+        currentRoot: {$ref: '#/components/schemas/Sha256Hex'}
+        leafCount: {type: integer, format: int64}
+        message: {type: string}
+        status: {type: string, nullable: true}
+
+    VerificationRequest:
+      type: object
+      required: [fileIdentifier, storageVersionId, contentHash, uploadTimestamp, knownRoot]
+      properties:
+        fileIdentifier: {type: string}
+        storageVersionId: {type: string}
+        contentHash: {$ref: '#/components/schemas/Sha256Hex'}
+        uploadTimestamp: {type: string, format: date-time}
+        knownRoot: {$ref: '#/components/schemas/Sha256Hex'}
+
+    VerificationResponse:
+      type: object
+      required: [verified, fileIdentifier, storageVersionId, contentHash]
+      properties:
+        verified: {type: boolean}
+        fileIdentifier: {type: string}
+        storageVersionId: {type: string}
+        contentHash: {$ref: '#/components/schemas/Sha256Hex'}
+
+    MerkleProofResponse:
+      type: object
+      required: [leafHash, leafIndex, proofPath, rootHash, generatedAt]
+      properties:
+        leafHash: {$ref: '#/components/schemas/Sha256Hex'}
+        leafIndex: {type: integer}
+        proofPath: {type: array, items: {$ref: '#/components/schemas/ProofStep'}}
+        rootHash: {$ref: '#/components/schemas/Sha256Hex'}
+        generatedAt: {type: string, format: date-time}
+
+    ProofStep:
+      type: object
+      required: [siblingHash, position]
+      properties:
+        siblingHash: {$ref: '#/components/schemas/Sha256Hex'}
+        position: {type: string, enum: [LEFT, RIGHT]}
+
+    FileVersionSummary:
+      type: object
+      required: [id, fileIdentifier, storageVersionId, contentHash, leafIndex]
+      properties:
+        id: {type: integer, format: int64}
+        fileIdentifier: {type: string}
+        storageVersionId: {type: string}
+        contentHash: {$ref: '#/components/schemas/Sha256Hex'}
+        leafIndex: {type: integer, format: int64}
+
+    FileVersionDetail:
+      allOf:
+        - $ref: '#/components/schemas/FileVersionSummary'
+        - type: object
+          properties:
+            uploadTimestamp: {type: string, format: date-time}
+
+    AllVersionsResponse:
+      type: object
+      required: [count, versions]
+      properties:
+        count: {type: integer}
+        versions: {type: array, items: {$ref: '#/components/schemas/FileVersionDetail'}}
+
+    FileVersionsResponse:
+      type: object
+      required: [fileIdentifier, count, versions]
+      properties:
+        fileIdentifier: {type: string}
+        count: {type: integer}
+        versions: {type: array, items: {$ref: '#/components/schemas/FileVersionDetail'}}
+
+    AnchoringResult:
+      type: object
+      required: [checkpointId, rootHash, transactionHash, blockNumber, anchoredAt, networkName]
+      properties:
+        checkpointId: {type: integer}
+        rootHash: {$ref: '#/components/schemas/Sha256Hex'}
+        transactionHash: {$ref: '#/components/schemas/TransactionHashHex'}
+        blockNumber: {type: integer}
+        anchoredAt: {type: string, format: date-time}
+        networkName: {type: string}
+
+    AnchorVerificationResponse:
+      type: object
+      required: [rootHash, transactionHash, isValid, message]
+      properties:
+        rootHash: {$ref: '#/components/schemas/Sha256Hex'}
+        transactionHash: {$ref: '#/components/schemas/TransactionHashHex'}
+        isValid: {type: boolean}
+        message: {type: string}
+
+    GasEstimateResponse:
+      type: object
+      required: [testnet, mainnetEstimate, estimatedAt]
+      properties:
+        testnet:
+          $ref: '#/components/schemas/TestnetEstimate'
+        mainnetEstimate:
+          $ref: '#/components/schemas/MainnetEstimate'
+        ethToUsdRate: {type: number, format: double, nullable: true}
+        ethToEurRate: {type: number, format: double, nullable: true}
+        estimatedAt:
+          type: string
+          format: date-time
+
+    TestnetEstimate:
+      type: object
+      required: [networkName, gasPriceWei, gasUsed, totalCostWei, totalCostEth]
+      properties:
+        networkName: {type: string, example: "sepolia"}
+        gasPriceWei: {type: integer, format: int64}
+        gasUsed: {type: integer, format: int64}
+        totalCostWei: {type: integer, format: int64}
+        totalCostEth: {type: number, format: double}
+        totalCostUsd: {type: number, format: double, nullable: true}
+        totalCostEur: {type: number, format: double, nullable: true}
+
+    MainnetEstimate:
+      type: object
+      required: [gasPriceWei, gasUsed, estimatedCostWei, estimatedCostEth]
+      properties:
+        gasPriceWei: {type: integer, format: int64}
+        gasUsed: {type: integer, format: int64}
+        estimatedCostWei: {type: integer, format: int64}
+        estimatedCostEth: {type: number, format: double}
+        estimatedCostUsd: {type: number, format: double, nullable: true}
+        estimatedCostEur: {type: number, format: double, nullable: true}

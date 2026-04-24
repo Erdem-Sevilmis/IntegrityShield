@@ -1,0 +1,1345 @@
+{
+  "info": {
+    "_postman_id": "integrity-shield-api-v2",
+    "name": "Integrity Shield API - Complete Test Suite",
+    "description": "Complete end-to-end testing collection for Integrity Shield with blockchain anchoring.\n\nAll endpoints use the /api/v1/ prefix.\n\nSETUP:\n1. Start the application: ./gradlew.bat bootRun\n2. Set base_url variable (default: http://localhost:8080)\n3. Run the sections in order: Files → Audit → Blockchain → E2E",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. File Management",
+      "description": "Upload files and manage file versions via /api/v1/files",
+      "item": [
+        {
+          "name": "1.1 - Upload File (Test File 1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201 || pm.response.code === 200) {",
+                  "    const data = pm.response.json();",
+                  "    if (data.contentHash) {",
+                  "        pm.collectionVariables.set('content_hash', data.contentHash);",
+                  "        pm.collectionVariables.set('upload_timestamp', data.uploadTimestamp);",
+                  "        pm.collectionVariables.set('file_identifier', data.fileIdentifier);",
+                  "        pm.collectionVariables.set('storage_version_id', data.storageVersionId);",
+                  "        pm.collectionVariables.set('merkle_root', data.currentRoot);",
+                  "        pm.collectionVariables.set('file_version_id', String(data.id));",
+                  "        console.log('✓ Saved storageVersionId: ' + data.storageVersionId);",
+                  "        console.log('✓ Saved currentRoot: ' + data.currentRoot);",
+                  "        console.log('✓ Saved fileVersionId: ' + data.id);",
+                  "    }",
+                  "}",
+                  "",
+                  "pm.test('Upload successful (201 Created)', function() {",
+                  "    pm.expect(pm.response.code).to.equal(201);",
+                  "});",
+                  "",
+                  "pm.test('Has required fields', function() {",
+                  "    const data = pm.response.json();",
+                  "    pm.expect(data.id).to.exist;",
+                  "    pm.expect(data.fileIdentifier).to.exist;",
+                  "    pm.expect(data.storageVersionId).to.exist;",
+                  "    pm.expect(data.contentHash).to.exist;",
+                  "    pm.expect(data.leafIndex).to.exist;",
+                  "    pm.expect(data.uploadTimestamp).to.exist;",
+                  "    pm.expect(data.currentRoot).to.exist;",
+                  "    pm.expect(data.leafCount).to.exist;",
+                  "    pm.expect(data.message).to.exist;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "test1.txt",
+                  "description": "Select any text file or document"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/files/upload",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "files", "upload"]
+            },
+            "description": "Upload first file to audit log. Returns 201 on success.\n\nAutomatically saves: contentHash, uploadTimestamp, fileIdentifier, storageVersionId, currentRoot, fileVersionId."
+          }
+        },
+        {
+          "name": "1.2 - Upload File (Test File 2)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Upload successful (201 Created)', function() {",
+                  "    pm.expect(pm.response.code).to.equal(201);",
+                  "});",
+                  "",
+                  "pm.test('Merkle root changed after second upload', function() {",
+                  "    const data = pm.response.json();",
+                  "    const previousRoot = pm.collectionVariables.get('merkle_root');",
+                  "    pm.expect(data.currentRoot).to.not.equal(previousRoot);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 201) {",
+                  "    const data = pm.response.json();",
+                  "    pm.collectionVariables.set('merkle_root', data.currentRoot);",
+                  "    pm.collectionVariables.set('file_version_id_2', String(data.id));",
+                  "    console.log('✓ Updated currentRoot: ' + data.currentRoot);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "test2.txt",
+                  "description": "Select a different file"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/files/upload",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "files", "upload"]
+            },
+            "description": "Upload second file. Merkle root should change (tree updated)."
+          }
+        },
+        {
+          "name": "1.3 - Upload Same File Again (Idempotent Test)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Idempotent upload returns 200 OK', function() {",
+                  "    pm.expect(pm.response.code).to.equal(200);",
+                  "});",
+                  "",
+                  "pm.test('Status indicates idempotent (duplicate content)', function() {",
+                  "    const data = pm.response.json();",
+                  "    pm.expect(data.status).to.equal('idempotent');",
+                  "    pm.expect(data.message).to.include('already audited');",
+                  "});",
+                  "",
+                  "pm.test('currentRoot unchanged (no new leaf added)', function() {",
+                  "    const data = pm.response.json();",
+                  "    pm.expect(data.currentRoot).to.equal(pm.collectionVariables.get('merkle_root'));",
+                  "    console.log('✓ currentRoot correctly unchanged: ' + data.currentRoot);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "test1.txt",
+                  "description": "Upload same file as in step 1.1"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/files/upload",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "files", "upload"]
+            },
+            "description": "Upload duplicate file with same content hash – should return 200 with status 'idempotent' without creating a new leaf. currentRoot should remain unchanged."
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Audit Verification",
+      "description": "Query the audit log, Merkle proofs, and verify file inclusion via /api/v1/audit",
+      "item": [
+        {
+          "name": "2.1 - Get Current Merkle Root",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', function() {",
+                  "    pm.expect(pm.response.code).to.equal(200);",
+                  "});",
+                  "",
+                  "pm.test('Has currentRoot and leafCount', function() {",
+                  "    const data = pm.response.json();",
+                  "    pm.expect(data.currentRoot).to.exist;",
+                  "    pm.expect(data.leafCount).to.exist;",
+                  "});",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "    const data = pm.response.json();",
+                  "    pm.collectionVariables.set('merkle_root', data.currentRoot);",
+                  "    console.log('✓ currentRoot: ' + data.currentRoot);",
+                  "    console.log('✓ leafCount: ' + data.leafCount);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/audit/current-root",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "audit", "current-root"]
+            },
+            "description": "Get current Merkle Root hash and leaf count. Response: { currentRoot, leafCount }"
+          }
+        },
+        {
+          "name": "2.2 - Get All File Versions",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', function() {",
+                  "    pm.expect(pm.response.code).to.equal(200);",
+                  "});",
+                  "",
+                  "pm.test('Has count and versions array', function() {",
+                  "    const data = pm.response.json();",
+                  "    pm.expect(data.count).to.exist;",
+                  "    pm.expect(data.versions).to.be.an('array');",
+                  "});",
+                  "",
+                  "pm.test('Each version has required fields', function() {",
+                  "    const data = pm.response.json();",
+                  "    if (data.versions.length > 0) {",
+                  "        const v = data.versions[0];",
+                  "        pm.expect(v.id).to.exist;",
+                  "        pm.expect(v.fileIdentifier).to.exist;",
+                  "        pm.expect(v.storageVersionId).to.exist;",
+                  "        pm.expect(v.contentHash).to.exist;",
+                  "        pm.expect(v.leafIndex).to.be.a('number');",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/audit/all-versions",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "audit", "all-versions"]
+            },
+            "description": "Get list of all uploaded file versions with their leaf indices.\nResponse: { count, versions: [{ id, fileIdentifier, storageVersionId, contentHash, leafIndex, uploadTimestamp }] }"
+          }
+        },
+        {
+          "name": "2.3 - Get File Versions by Identifier",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', function() {",
+                  "    pm.expect(pm.response.code).to.equal(200);",
+                  "});",
+                  "",
+                  "pm.test('Has fileIdentifier, count, and versions', function() {",
+                  "    const data = pm.response.json();",
+                  "    pm.expect(data.fileIdentifier).to.exist;",
+                  "    pm.expect(data.count).to.exist;",
+                  "    pm.expect(data.versions).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/audit/versions/{{file_identifier}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "audit", "versions", "{{file_identifier}}"]
+            },
+            "description": "Get all versions for a specific file identifier.\nResponse: { fileIdentifier, count, versions: [...] }"
+          }
+        },
+        {
+          "name": "2.4 - Get Merkle Proof (File Version 1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', function() {",
+                  "    pm.expect(pm.response.code).to.equal(200);",
+                  "});",
+                  "",
+                  "pm.test('Proof has required fields', function() {",
+                  "    const data = pm.response.json();",
+                  "    pm.expect(data.leafHash).to.exist;",
+                  "    pm.expect(data.leafIndex).to.be.a('number');",
+                  "    pm.expect(data.proofPath).to.be.an('array');",
+                  "    pm.expect(data.rootHash).to.exist;",
+                  "    pm.expect(data.generatedAt).to.exist;",
+                  "});",
+                  "",
+                  "pm.test('Proof steps have siblingHash and position', function() {",
+                  "    const data = pm.response.json();",
+                  "    if (data.proofPath.length > 0) {",
+                  "        const step = data.proofPath[0];",
+                  "        pm.expect(step.siblingHash).to.exist;",
+                  "        pm.expect(step.position).to.exist;",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/audit/proof/{{file_version_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "audit", "proof", "{{file_version_id}}"]
+            },
+            "description": "Get Merkle proof path for a file version. Uses {{file_version_id}} saved from step 1.1.\nResponse: { leafHash, leafIndex, proofPath: [{ siblingHash, position }], rootHash, generatedAt }"
+          }
+        },
+        {
+          "name": "2.5 - Get Merkle Proof (File Version 2)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/audit/proof/{{file_version_id_2}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "audit", "proof", "{{file_version_id_2}}"]
+            },
+            "description": "Get Merkle proof path for the second uploaded file version."
+          }
+        },
+        {
+          "name": "2.6 - Verify File Inclusion",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const fileId = pm.collectionVariables.get('file_identifier') || 'test1.txt';",
+                  "const storageVerId = pm.collectionVariables.get('storage_version_id') || 'NO_VERSION_SET';",
+                  "const hash = pm.collectionVariables.get('content_hash') || 'NO_HASH_SET';",
+                  "const timestamp = pm.collectionVariables.get('upload_timestamp') || 'NO_TIMESTAMP_SET';",
+                  "const root = pm.collectionVariables.get('merkle_root') || 'NO_ROOT_SET';",
+                  "",
+                  "console.log('Using values from collection variables:');",
+                  "console.log('  fileIdentifier: ' + fileId);",
+                  "console.log('  storageVersionId: ' + storageVerId);",
+                  "console.log('  contentHash: [redacted]');",
+                  "console.log('  uploadTimestamp: ' + timestamp);",
+                  "console.log('  knownRoot: ' + root.substring(0, 16) + '...');"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', function() {",
+                  "    pm.expect(pm.response.code).to.equal(200);",
+                  "});",
+                  "",
+                  "pm.test('Verification result has required fields', function() {",
+                  "    const data = pm.response.json();",
+                  "    pm.expect(data.verified).to.be.a('boolean');",
+                  "    pm.expect(data.fileIdentifier).to.exist;",
+                  "    pm.expect(data.storageVersionId).to.exist;",
+                  "    pm.expect(data.contentHash).to.exist;",
+                  "});",
+                  "",
+                  "pm.test('File inclusion verified', function() {",
+                  "    const data = pm.response.json();",
+                  "    pm.expect(data.verified).to.be.true;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fileIdentifier\": \"{{file_identifier}}\",\n  \"storageVersionId\": \"{{storage_version_id}}\",\n  \"contentHash\": \"{{content_hash}}\",\n  \"uploadTimestamp\": \"{{upload_timestamp}}\",\n  \"knownRoot\": \"{{merkle_root}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/audit/verify-inclusion",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "audit", "verify-inclusion"]
+            },
+            "description": "Verify that a file is included in the Merkle Tree.\n\nAll values come from step 1.1 automatically.\nRequest body fields: fileIdentifier, storageVersionId, contentHash, uploadTimestamp, knownRoot.\nResponse: { verified, fileIdentifier, storageVersionId, contentHash }"
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Blockchain Anchoring",
+      "description": "Anchor Merkle roots to blockchain and verify anchors via /api/v1/audit",
+      "item": [
+        {
+          "name": "3.1 - Anchor Current Root to Blockchain",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Anchor successful (200 OK)', function() {",
+                  "    pm.expect(pm.response.code).to.equal(200);",
+                  "});",
+                  "",
+                  "pm.test('Has required anchoring fields', function() {",
+                  "    const data = pm.response.json();",
+                  "    pm.expect(data.checkpointId).to.exist;",
+                  "    pm.expect(data.rootHash).to.exist;",
+                  "    pm.expect(data.transactionHash).to.exist;",
+                  "    pm.expect(data.blockNumber).to.exist;",
+                  "    pm.expect(data.anchoredAt).to.exist;",
+                  "    pm.expect(data.networkName).to.exist;",
+                  "});",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "    const data = pm.response.json();",
+                  "    pm.collectionVariables.set('transaction_hash', data.transactionHash);",
+                  "    pm.collectionVariables.set('merkle_root', data.rootHash);",
+                  "    pm.collectionVariables.set('checkpoint_id', String(data.checkpointId));",
+                  "    console.log('✓ Saved transactionHash: ' + data.transactionHash);",
+                  "    console.log('✓ Saved rootHash: ' + data.rootHash);",
+                  "    console.log('✓ Saved checkpointId: ' + data.checkpointId);",
+                  "    console.log('✓ Network: ' + data.networkName);",
+                  "    console.log('✓ Block: ' + data.blockNumber);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/audit/anchor-root",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "audit", "anchor-root"]
+            },
+            "description": "Anchor the current Merkle Root to blockchain (Sepolia or Hardhat).\nReturns: { checkpointId, rootHash, transactionHash, blockNumber, anchoredAt, networkName }\n\nAutomatically saves transactionHash, rootHash, checkpointId for later verification."
+          }
+        },
+        {
+          "name": "3.2 - Get Latest Anchor",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', function() {",
+                  "    pm.expect(pm.response.code).to.equal(200);",
+                  "});",
+                  "",
+                  "pm.test('Has anchoring result fields', function() {",
+                  "    const data = pm.response.json();",
+                  "    pm.expect(data.checkpointId).to.exist;",
+                  "    pm.expect(data.rootHash).to.exist;",
+                  "    pm.expect(data.transactionHash).to.exist;",
+                  "    pm.expect(data.blockNumber).to.exist;",
+                  "    pm.expect(data.anchoredAt).to.exist;",
+                  "    pm.expect(data.networkName).to.exist;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/audit/latest-anchor",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "audit", "latest-anchor"]
+            },
+            "description": "Get the most recently anchored checkpoint.\nReturns: { checkpointId, rootHash, transactionHash, blockNumber, anchoredAt, networkName }"
+          }
+        },
+        {
+          "name": "3.3 - Verify Anchor on Blockchain",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', function() {",
+                  "    pm.expect(pm.response.code).to.equal(200);",
+                  "});",
+                  "",
+                  "pm.test('Anchor is valid', function() {",
+                  "    const data = pm.response.json();",
+                  "    pm.expect(data.isValid).to.be.true;",
+                  "});",
+                  "",
+                  "pm.test('Response has required fields', function() {",
+                  "    const data = pm.response.json();",
+                  "    pm.expect(data.rootHash).to.exist;",
+                  "    pm.expect(data.transactionHash).to.exist;",
+                  "    pm.expect(data.isValid).to.be.a('boolean');",
+                  "    pm.expect(data.message).to.exist;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/audit/anchors/verify?rootHash={{merkle_root}}&transactionHash={{transaction_hash}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "audit", "anchors", "verify"],
+              "query": [
+                {
+                  "key": "rootHash",
+                  "value": "{{merkle_root}}"
+                },
+                {
+                  "key": "transactionHash",
+                  "value": "{{transaction_hash}}"
+                }
+              ]
+            },
+            "description": "Verify that a Merkle Root is anchored on blockchain with matching transaction hash.\nUses {{merkle_root}} and {{transaction_hash}} saved from step 3.1.\nResponse: { rootHash, transactionHash, isValid, message }"
+          }
+        },
+        {
+          "name": "3.4 - Get Gas Estimate",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', function() {",
+                  "    pm.expect(pm.response.code).to.equal(200);",
+                  "});",
+                  "",
+                  "pm.test('Has testnet estimate', function() {",
+                  "    const data = pm.response.json();",
+                  "    pm.expect(data.testnet).to.exist;",
+                  "    pm.expect(data.testnet.networkName).to.exist;",
+                  "    pm.expect(data.testnet.gasPriceWei).to.exist;",
+                  "    pm.expect(data.testnet.gasUsed).to.exist;",
+                  "    pm.expect(data.testnet.totalCostWei).to.exist;",
+                  "});",
+                  "",
+                  "pm.test('Has mainnet estimate', function() {",
+                  "    const data = pm.response.json();",
+                  "    pm.expect(data.mainnetEstimate).to.exist;",
+                  "    pm.expect(data.mainnetEstimate.gasPriceWei).to.exist;",
+                  "    pm.expect(data.mainnetEstimate.gasUsed).to.exist;",
+                  "    pm.expect(data.mainnetEstimate.estimatedCostWei).to.exist;",
+                  "    pm.expect(data.mainnetEstimate.estimatedCostEth).to.exist;",
+                  "});",
+                  "",
+                  "pm.test('Has estimatedAt timestamp', function() {",
+                  "    const data = pm.response.json();",
+                  "    pm.expect(data.estimatedAt).to.exist;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/audit/gas-estimate",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "audit", "gas-estimate"]
+            },
+            "description": "Get gas cost estimation for anchoring on testnet and mainnet.\nResponse: { testnet: { networkName, gasPriceWei, gasUsed, totalCostWei }, mainnetEstimate: { gasPriceWei, gasUsed, estimatedCostWei, estimatedCostEth, estimatedCostUsd, ethToUsdRate }, estimatedAt }"
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. End-to-End Test Scenario",
+      "description": "Complete workflow test – run steps in order. Covers: upload → verify audit → anchor → verify anchor.",
+      "item": [
+        {
+          "name": "E2E Step 1: Check Initial State",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('API is running (200 OK)', function() {",
+                  "    pm.expect(pm.response.code).to.equal(200);",
+                  "});",
+                  "",
+                  "pm.test('Has currentRoot and leafCount', function() {",
+                  "    const data = pm.response.json();",
+                  "    pm.expect(data.currentRoot).to.exist;",
+                  "    pm.expect(data.leafCount).to.exist;",
+                  "    console.log('Initial leafCount: ' + data.leafCount);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/audit/current-root",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "audit", "current-root"]
+            },
+            "description": "Check initial state. leafCount should be 0 or the number of previously uploaded files."
+          }
+        },
+        {
+          "name": "E2E Step 2: Upload Document A",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Upload successful (201)', function() {",
+                  "    pm.expect(pm.response.code).to.equal(201);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 201) {",
+                  "    const data = pm.response.json();",
+                  "    pm.collectionVariables.set('e2e_file_id', data.fileIdentifier);",
+                  "    pm.collectionVariables.set('e2e_storage_version_id', data.storageVersionId);",
+                  "    pm.collectionVariables.set('e2e_content_hash', data.contentHash);",
+                  "    pm.collectionVariables.set('e2e_upload_timestamp', data.uploadTimestamp);",
+                  "    pm.collectionVariables.set('e2e_file_version_id', String(data.id));",
+                  "    pm.collectionVariables.set('e2e_merkle_root', data.currentRoot);",
+                  "    console.log('✓ leafIndex: ' + data.leafIndex);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "document-a.txt"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/files/upload",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "files", "upload"]
+            },
+            "description": "Upload first document."
+          }
+        },
+        {
+          "name": "E2E Step 3: Upload Document B",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Upload successful (201)', function() {",
+                  "    pm.expect(pm.response.code).to.equal(201);",
+                  "});",
+                  "",
+                  "pm.test('Merkle root changed', function() {",
+                  "    const data = pm.response.json();",
+                  "    pm.expect(data.currentRoot).to.not.equal(pm.collectionVariables.get('e2e_merkle_root'));",
+                  "});",
+                  "",
+                  "if (pm.response.code === 201) {",
+                  "    const data = pm.response.json();",
+                  "    pm.collectionVariables.set('e2e_merkle_root', data.currentRoot);",
+                  "    console.log('✓ Updated merkle root: ' + data.currentRoot);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "document-b.txt"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/files/upload",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "files", "upload"]
+            },
+            "description": "Upload second document. Merkle root should differ from step 2."
+          }
+        },
+        {
+          "name": "E2E Step 4: List All Versions",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', function() {",
+                  "    pm.expect(pm.response.code).to.equal(200);",
+                  "});",
+                  "",
+                  "pm.test('Has versions', function() {",
+                  "    const data = pm.response.json();",
+                  "    pm.expect(data.count).to.be.greaterThan(0);",
+                  "    pm.expect(data.versions).to.be.an('array');",
+                  "    console.log('✓ Total versions: ' + data.count);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/audit/all-versions",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "audit", "all-versions"]
+            },
+            "description": "Verify: both documents listed with correct leafIndex."
+          }
+        },
+        {
+          "name": "E2E Step 5: Get Merkle Root",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', function() {",
+                  "    pm.expect(pm.response.code).to.equal(200);",
+                  "});",
+                  "",
+                  "pm.test('Has currentRoot and positive leafCount', function() {",
+                  "    const data = pm.response.json();",
+                  "    pm.expect(data.currentRoot).to.exist;",
+                  "    pm.expect(data.leafCount).to.be.greaterThan(0);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "    const data = pm.response.json();",
+                  "    pm.collectionVariables.set('e2e_merkle_root', data.currentRoot);",
+                  "    console.log('✓ currentRoot: ' + data.currentRoot);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/audit/current-root",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "audit", "current-root"]
+            },
+            "description": "Get the current Merkle root. Saves to collection variable for later steps."
+          }
+        },
+        {
+          "name": "E2E Step 6: Get Proof for Document A",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', function() {",
+                  "    pm.expect(pm.response.code).to.equal(200);",
+                  "});",
+                  "",
+                  "pm.test('Proof is valid', function() {",
+                  "    const data = pm.response.json();",
+                  "    pm.expect(data.leafHash).to.exist;",
+                  "    pm.expect(data.proofPath).to.be.an('array');",
+                  "    pm.expect(data.rootHash).to.exist;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/audit/proof/{{e2e_file_version_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "audit", "proof", "{{e2e_file_version_id}}"]
+            },
+            "description": "Get proof for document A using the file version ID saved in step 2."
+          }
+        },
+        {
+          "name": "E2E Step 7: Verify File Inclusion",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', function() {",
+                  "    pm.expect(pm.response.code).to.equal(200);",
+                  "});",
+                  "",
+                  "pm.test('Inclusion verified', function() {",
+                  "    const data = pm.response.json();",
+                  "    pm.expect(data.verified).to.be.true;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fileIdentifier\": \"{{e2e_file_id}}\",\n  \"storageVersionId\": \"{{e2e_storage_version_id}}\",\n  \"contentHash\": \"{{e2e_content_hash}}\",\n  \"uploadTimestamp\": \"{{e2e_upload_timestamp}}\",\n  \"knownRoot\": \"{{e2e_merkle_root}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/audit/verify-inclusion",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "audit", "verify-inclusion"]
+            },
+            "description": "Verify that document A is included in the Merkle tree using all values saved from step 2."
+          }
+        },
+        {
+          "name": "E2E Step 8: Anchor to Blockchain",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Anchor successful (200)', function() {",
+                  "    pm.expect(pm.response.code).to.equal(200);",
+                  "});",
+                  "",
+                  "pm.test('Has transactionHash', function() {",
+                  "    const data = pm.response.json();",
+                  "    pm.expect(data.transactionHash).to.exist;",
+                  "});",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "    const data = pm.response.json();",
+                  "    pm.collectionVariables.set('e2e_transaction_hash', data.transactionHash);",
+                  "    pm.collectionVariables.set('e2e_merkle_root', data.rootHash);",
+                  "    console.log('✓ transactionHash: ' + data.transactionHash);",
+                  "    console.log('✓ rootHash: ' + data.rootHash);",
+                  "    console.log('✓ blockNumber: ' + data.blockNumber);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/audit/anchor-root",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "audit", "anchor-root"]
+            },
+            "description": "Anchor the Merkle root to blockchain. Saves transactionHash for verification."
+          }
+        },
+        {
+          "name": "E2E Step 9: Check Anchored Data",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', function() {",
+                  "    pm.expect(pm.response.code).to.equal(200);",
+                  "});",
+                  "",
+                  "pm.test('Root matches anchored root', function() {",
+                  "    const data = pm.response.json();",
+                  "    pm.expect(data.rootHash).to.equal(pm.collectionVariables.get('e2e_merkle_root'));",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/audit/latest-anchor",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "audit", "latest-anchor"]
+            },
+            "description": "Verify the latest anchor matches the anchored values from step 8."
+          }
+        },
+        {
+          "name": "E2E Step 10: Verify Anchor on Blockchain",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', function() {",
+                  "    pm.expect(pm.response.code).to.equal(200);",
+                  "});",
+                  "",
+                  "pm.test('Anchor is valid', function() {",
+                  "    const data = pm.response.json();",
+                  "    pm.expect(data.isValid).to.be.true;",
+                  "});",
+                  "",
+                  "pm.test('Response has required fields', function() {",
+                  "    const data = pm.response.json();",
+                  "    pm.expect(data.rootHash).to.exist;",
+                  "    pm.expect(data.transactionHash).to.exist;",
+                  "    pm.expect(data.message).to.exist;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/audit/anchors/verify?rootHash={{e2e_merkle_root}}&transactionHash={{e2e_transaction_hash}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "audit", "anchors", "verify"],
+              "query": [
+                {
+                  "key": "rootHash",
+                  "value": "{{e2e_merkle_root}}"
+                },
+                {
+                  "key": "transactionHash",
+                  "value": "{{e2e_transaction_hash}}"
+                }
+              ]
+            },
+            "description": "Verify the anchor using transactionHash from step 8. Should show isValid = true."
+          }
+        },
+        {
+          "name": "E2E Step 11: Get Gas Estimate",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', function() {",
+                  "    pm.expect(pm.response.code).to.equal(200);",
+                  "});",
+                  "",
+                  "pm.test('Has gas estimate data', function() {",
+                  "    const data = pm.response.json();",
+                  "    pm.expect(data.testnet).to.exist;",
+                  "    pm.expect(data.mainnetEstimate).to.exist;",
+                  "    pm.expect(data.estimatedAt).to.exist;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/audit/gas-estimate",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "audit", "gas-estimate"]
+            },
+            "description": "Get gas cost estimation for anchoring operations."
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Troubleshooting & Edge Cases",
+      "description": "Error handling and edge-case tests",
+      "item": [
+        {
+          "name": "Health Check - Get Current Root",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('API is running (200 OK)', function() {",
+                  "    pm.expect(pm.response.code).to.equal(200);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/audit/current-root",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "audit", "current-root"]
+            },
+            "description": "Simple health check – if this returns 200, the API is running."
+          }
+        },
+        {
+          "name": "Test Empty Upload (Should Fail - 400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Returns 400 Bad Request', function() {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([400, 500]);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": []
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/files/upload",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "files", "upload"]
+            },
+            "description": "Expected: 400 error – missing or empty file."
+          }
+        },
+        {
+          "name": "Test Invalid Proof ID (Should Return 404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Returns 404 Not Found', function() {",
+                  "    pm.expect(pm.response.code).to.equal(404);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/audit/proof/99999",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "audit", "proof", "99999"]
+            },
+            "description": "Expected: 404 – proof not found for non-existent file version."
+          }
+        },
+        {
+          "name": "Test Latest Anchor When None Exist (Should Return 404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Returns 404 Not Found', function() {",
+                  "    pm.expect(pm.response.code).to.equal(404);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/audit/latest-anchor",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "audit", "latest-anchor"]
+            },
+            "description": "Expected: 404 – no anchored checkpoint exists yet (run on fresh database)."
+          }
+        },
+        {
+          "name": "Test Verify Anchor with Invalid Data",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', function() {",
+                  "    pm.expect(pm.response.code).to.equal(200);",
+                  "});",
+                  "",
+                  "pm.test('Anchor is NOT valid', function() {",
+                  "    const data = pm.response.json();",
+                  "    pm.expect(data.isValid).to.be.false;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/audit/anchors/verify?rootHash=0xinvalidroot&transactionHash=0xinvalidtx",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "audit", "anchors", "verify"],
+              "query": [
+                {
+                  "key": "rootHash",
+                  "value": "0xinvalidroot"
+                },
+                {
+                  "key": "transactionHash",
+                  "value": "0xinvalidtx"
+                }
+              ]
+            },
+            "description": "Verify anchor with invalid data – should return isValid = false."
+          }
+        },
+        {
+          "name": "Test Verify Inclusion with Wrong Root",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', function() {",
+                  "    pm.expect(pm.response.code).to.equal(200);",
+                  "});",
+                  "",
+                  "pm.test('Verification fails with wrong root', function() {",
+                  "    const data = pm.response.json();",
+                  "    pm.expect(data.verified).to.be.false;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fileIdentifier\": \"nonexistent.txt\",\n  \"storageVersionId\": \"fake-version\",\n  \"contentHash\": \"0000000000000000000000000000000000000000000000000000000000000000\",\n  \"uploadTimestamp\": \"2025-01-01T00:00:00Z\",\n  \"knownRoot\": \"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/audit/verify-inclusion",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "audit", "verify-inclusion"]
+            },
+            "description": "Verify inclusion with wrong root – should return verified = false."
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "file_identifier",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "storage_version_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "merkle_root",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "content_hash",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "upload_timestamp",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "transaction_hash",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "file_version_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "file_version_id_2",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "checkpoint_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "e2e_file_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "e2e_storage_version_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "e2e_content_hash",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "e2e_upload_timestamp",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "e2e_file_version_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "e2e_merkle_root",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "e2e_transaction_hash",
+      "value": "",
+      "type": "string"
+    }
+  ]
+}
+

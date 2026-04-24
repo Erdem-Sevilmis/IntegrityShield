@@ -1,0 +1,44 @@
+spring:
+  application:
+    name: integrity-shield-test
+  datasource:
+    driver-class-name: org.h2.Driver
+    url: jdbc:h2:mem:testdb;DB_CLOSE_ON_EXIT=FALSE
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+
+aws:
+  credentials:
+    access-key: test-key
+    secret-key: test-secret
+  region:
+    static: eu-north-1
+  s3:
+    bucket-name: test-bucket
+    max-file-size-bytes: 110000000
+
+blockchain:
+  api:
+    key-secret: test-secret
+  network:
+    name: sepolia
+    rpcUrl: http://localhost:8545
+  contract:
+    address: "0x0000000000000000000000000000000000000000"
+  transaction:
+    gas-limit: 48801
+    gas-price: auto
+  wallet:
+    private-key: "0x0000000000000000000000000000000000000000000000000000000000000001"
+  scheduler:
+    enabled: false
+    interval-minutes: 5
+    initial-delay-minutes: 1
+  estimation:
+    default-gas-used: 48801
+  mainnet:
+    rpcUrl: http://localhost:8546
+

@@ -1,0 +1,59 @@
+spring:
+  application:
+    name: integrity-shield
+  servlet:
+    multipart:
+      max-file-size: ${AWS_S3_MAX_FILE_SIZE_BYTES:110000000}
+      max-request-size: ${AWS_S3_MAX_FILE_SIZE_BYTES:110000000}
+  datasource:
+    driver-class-name: org.h2.Driver
+    url: jdbc:h2:mem:localhost;DB_CLOSE_ON_EXIT=FALSE
+    username: admin
+    password:
+
+aws:
+  credentials:
+    access-key: ${AWS_ACCESS_KEY:}
+    secret-key: ${AWS_SECRET_KEY:}
+  region:
+    static: ${AWS_REGION:eu-north-1}
+  s3:
+    bucket-name: ${AWS_S3_BUCKET_NAME:integrity-shield}
+    max-file-size-bytes: ${AWS_S3_MAX_FILE_SIZE_BYTES:110000000}
+
+# Blockchain Anchoring Configuration
+# To use Sepolia testnet:
+# 1. Set BLOCKCHAIN_RPC_URL environment variable to your Infura/Alchemy endpoint
+#    Example: https://sepolia.infura.io/v3/YOUR_INFURA_KEY
+# 2. Set BLOCKCHAIN_PRIVATE_KEY environment variable to your wallet's private key
+# 3. Set BLOCKCHAIN_CONTRACT_ADDRESS to your deployed smart contract address
+blockchain:
+  # Network configuration
+  api:
+    key-secret: ${BLOCKCHAIN_API_KEY_SECRET:}
+  network:
+    name: sepolia
+    rpcUrl: ${BLOCKCHAIN_RPC_URL:}
+
+  # Smart Contract configuration
+  contract:
+    address: ${BLOCKCHAIN_CONTRACT_ADDRESS:}
+
+  # Transaction configuration
+  transaction:
+    gas-limit: 48801
+    gas-price: auto # "auto" for automatic gas price or specify in wei
+
+  # Account/Wallet configuration
+  wallet:
+    private-key: ${BLOCKCHAIN_PRIVATE_KEY:}
+
+  # Anchoring scheduler configuration
+  scheduler:
+    enabled: false  # Set to true to enable scheduled anchoring
+    interval-minutes: 5  # Run every 5 minutes
+    initial-delay-minutes: 1  # Start after 1 minute
+
+  # Mainnet configuration (for gas estimation - read-only, no wallet needed)
+  mainnet:
+    rpcUrl: ${BLOCKCHAIN_MAINNET_RPC_URL:}

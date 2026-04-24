@@ -1,0 +1,22 @@
+# **App Name**: Integrity-Shield Dashboard
+
+## Core Features:
+
+- File Upload and Immutable Storage: Users can securely upload files via a drag-and-drop 'Data Room' interface, featuring a persistent visual lock icon to reinforce WORM storage. The UI provides visual indications of WORM storage confirmation, real-time SHA-256 hash generation status, and differentiates between new uploads and 'Duplicate Detected' messages for idempotent operations, highlighting existing fileIdentifier and leafIndex. This leverages the '/api/upload' endpoint.
+- Audit Log and Integrity Chain Viewer: A comprehensive data table displaying all file versions, their cryptographic hashes, and position within the Merkle tree, forming a visible 'chain of trust'. Users can view global logs or filter by specific file identifiers using the '/api/v1/audit/all-versions' and '/api/v1/audit/versions/{fileIdentifier}' endpoints.
+- Merkle Proof Visualizer: A dynamic visualization tool that graphically represents the Merkle proof path from a selected leaf to the root, using the 'proofPathJson' from '/api/v1/audit/proof/{fileVersionId}' to make the cryptographic integrity tangible for auditors.
+- Auditor Verification Tool: A dedicated screen for auditors to input file metadata (e.g., file identifier, content hash, Merkle root) and verify the cryptographic inclusion and immutability of a file against known off-chain and on-chain roots. It includes an 'Export Audit Package' function to download a .zip file containing the original file, Merkle Proof, and blockchain transaction hash for independent offline verification. Powered by '/api/v1/audit/verify-inclusion' and '/api/blockchain/anchor/verify'.
+- Blockchain Anchoring Status Monitor: A concise dashboard widget displaying the current status of periodic Merkle root anchoring to the blockchain. This includes success/failure indicators, details of the latest successful anchor, a 'Pending Anchors' metric (delta between current leaf count and latest anchored leaf count), and clickable links to block explorers (e.g., Etherscan) for direct on-chain verification using the 'transactionHash' and 'networkName' from '/api/blockchain/anchor/latest'.
+- Manual Blockchain Anchoring Trigger: An administrative feature to manually initiate the anchoring of the current Merkle root to the designated blockchain network, providing direct control and using the '/api/blockchain/anchor' endpoint.
+- AI-Powered Audit Summary Tool: A tool that processes selected audit log entries (from '/api/v1/audit/all-versions') and leverages generative AI to provide concise summaries, highlight potential anomalies, or suggest areas for further compliance investigation, acting as an intelligent assistant for auditors.
+
+## Style Guidelines:
+
+- Dark color scheme chosen to emphasize security and sophistication, similar to high-trust enterprise and fintech applications.
+- Primary interactive color: A professional and stable deep blue-violet (#4B64AB) conveys trust and data integrity. (HSL: 220, 40%, 45%)
+- Background color: A subtly tinted very dark gray (#20242B) for a clean, non-distracting canvas that highlights content. (HSL: 220, 15%, 15%)
+- Accent color: A vibrant light cyan (#30CEF8) used sparingly for active elements, highlights, and alerts, providing clear contrast against the dark background. (HSL: 190, 80%, 60%)
+- Primary and body font: 'Inter' (sans-serif) for its modern, objective, and neutral characteristics, ensuring high readability for data-intensive dashboards.
+- Utilize a consistent set of clean, professional line icons to clearly represent actions and data types, aligning with a secure and technical interface. This includes a persistent lock icon to visually denote WORM storage for uploaded files.
+- Adopt a modular dashboard layout with distinct cards and sections for easy navigation and information digestion. The file upload area is designed as a secure 'Data Room' supporting drag-and-drop. Prioritize data clarity and user action pathways, suitable for auditors requiring precise insights.
+- Implement subtle and purposeful animations for state changes, data loading, and interactive feedback, enhancing the user experience without causing distraction in a professional environment.
