@@ -15,8 +15,6 @@ Both the API and UI include their own README files with setup, configuration, an
 
 A compact visual overview of the main UI flow is available below.
 
-> Note: For screenshots to render on GitHub, image files must be committed to this repository (or hosted at a stable public URL).
-
 <details>
 <summary>Show UI screenshots</summary>
 
